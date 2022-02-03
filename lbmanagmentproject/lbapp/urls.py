@@ -8,6 +8,5 @@ router.register(r'issue_logs', BookIssueLogViewSet)
 router.register(r'issue_requests', IssueRequestViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('report_csv/', IssueLogExportAsCSV.as_view())
+    path('', include(router.urls))
 ]
