@@ -13,11 +13,28 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf.urls import include
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path
+from rest_framework import routers
+from rest_framework.routers import DefaultRouter
+from lbapp import views
+
+from lbapp.views import AdminLoginView , TokenView
+
+router = routers.DefaultRouter()
+router.register(r'api/book', views.BookView)
+router.register(r'api/StudentView', views.StudentView)
+router.register(r'api/IssueBookView', views.IssueBookView)
+router.register(r'api/ReturnBookView', views.ReturnBookView)
+
 
 urlpatterns = [
+    path('', include(router.urls)),
     path('admin/', admin.site.urls),
-    path('api/v1/', include('lbapp.urls')),
+    path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    path('token/', AdminLoginView.as_view()),
+    path('refresh_token', TokenView.as_view())
 
 ]
+

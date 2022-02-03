@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'lbapp',
-    'rest_framework'
+    'rest_framework',
+    'oauth2_provider'
 ]
 
 MIDDLEWARE = [
@@ -68,15 +69,14 @@ TEMPLATES = [
         },
     },
 ]
+'''
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-    # 'PAGE_SIZE': 10
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'oauth2_provider.contrib.rest_framework.OAuth2Authentication'
+    )
 }
 
-
-AUTH_USER_MODEL = 'lbapp.User'
+'''
 WSGI_APPLICATION = 'lbmanagmentproject.wsgi.application'
 
 
@@ -129,3 +129,23 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+
+URL_TYPE = "http://127.0.0.1:8000"
+CLIENT_ID = "PJhvw2cc1kEJHocuos8xyL53C1K2jvfljsX110FW"
+CLIENT_SECRET = "VN3DhOfiiupCCFz5Vl7CvBWaPHfM9ln1irkmCeniEK9qmLze0cr2c10EKBivmB4AoQGlByRIokI4MxNlEvwfTwIteajKCNVzSVs5luLDQnx2PuGKnHlnn6SgMV8RIAWE"
+LOGIN_URL='/admin/login/'
+
+AUTH_USER_MODEL = 'lbapp.User'
+
+OAUTH2_PROVIDER = {
+    "SCOPES": {
+        "admin": "can access to admin portal only",
+        "student": "can access to student portal only",
+    },
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
+    "OAUTH_SINGLE_ACCESS_TOKEN": True,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 604800,
+}

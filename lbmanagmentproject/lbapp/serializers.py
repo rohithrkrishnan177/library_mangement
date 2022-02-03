@@ -1,23 +1,82 @@
-from rest_framework import serializers
-from .models import Book, IssueLog, IssueRequest
+from django.db.models import Q
+from rest_framework import exceptions, serializers
+from django.contrib.auth import authenticate
+from .models import User
+from django.urls import reverse
+from rest_framework import serializers, status
 
 
-class BookSerializer(serializers.ModelSerializer):
+from .models import BookModel, IssueBook, ReturnBook, Student,User
+
+
+class UserSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, data):
+        username = data.get("username", "")
+        password = data.get("password", "")
+        if username and password:
+            user = User.objects.filter(
+                (Q(username=username))
+            ).first()
+            if user and authenticate(username=username, password=password):
+                data["user"] = user
+
+            else:
+                msg = "Unable to login with given credentials."
+                raise exceptions.AuthenticationFailed({"username": [msg]})
+        else:
+            msg = "Must provide username and password both."
+            raise exceptions.ValidationError({"username": [msg]})
+        return data
+
+
+
+
+
+class StudentSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(required=False)
+
     class Meta:
-        model = Book
-        fields = ['id', 'title', 'author', 'quantity', 'available']
-        read_only_fields = ('id',)
+        model = Student
+        fields = [
+            "id",
+            "user_id",
+            "student_name",
+            "phone",
+            "password"
+        ]
+
+    def create(self, validated_data):
+        user = User()
+
+        user.username = validated_data["student_name"]
+        password = validated_data["password"]
+        user.set_password(password)
+        user.save()
+        student = Student()
+        student.student_name = validated_data["student_name"]
+        student.phone = validated_data["phone"]
+        student.user_id = user
+        student.save()
+
+        return student
 
 
-class BookIssueLogSerializer(serializers.ModelSerializer):
+class BookModelSerializer(serializers.ModelSerializer):
     class Meta:
-        model = IssueLog
-        fields = ['id', 'book', 'borrower', 'issued_date', 'due_date', 'deposit_date', 'penalty']
-        read_only_fields = ('id',)
+        model = BookModel
+        fields = '__all__'
 
 
-class BookIssueRequestSerializer(serializers.ModelSerializer):
+class IssueBookSerializer(serializers.ModelSerializer):
     class Meta:
-        model = IssueRequest
-        fields = ['requester', 'book', 'request_status', 'request_date']
-        read_only_fields = ('id',)
+        model = IssueBook
+        fields = '__all__'
+
+
+class ReturnBookSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReturnBook
+        fields = '__all__'

@@ -1,86 +1,154 @@
-from datetime import date
-
-from django.core.exceptions import ObjectDoesNotExist
-from django.http import HttpResponse
-
-from rest_framework import viewsets, permissions, views, filters
-from rest_framework.exceptions import APIException
-
-from .models import Book, IssueLog, IssueRequest
-from .serializers import BookSerializer, BookIssueRequestSerializer, BookIssueLogSerializer
-
-class BookViewSet(viewsets.ModelViewSet):
-    queryset = Book.objects.all()
-    serializer_class = BookSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, permissions.IsAdminUser]
-    search_fields = ['title', 'author']
-    filter_backends = (filters.SearchFilter,)
-
-
-def check_book_not_issued_to_user(borrower, book):
-    qs = IssueLog.objects.filter(book=book, borrower=borrower, deposit_date=None)
-    if qs:
-        return False
-    return True
+from django.db.models import fields
+from django.conf import settings
+from rest_framework.generics import CreateAPIView, GenericAPIView
+from rest_framework.views import APIView
+from .models import Student
+from .serializers import UserSerializer,StudentSerializer
+from django.http import response
+from rest_framework.response import Response
+from rest_framework import status
+import requests
+from django.shortcuts import render
+from rest_framework.serializers import Serializer
+from rest_framework.viewsets import ModelViewSet
+from rest_framework import generics, viewsets
+from rest_framework.response import Response
+from django.db.models import F
+from .models import BookModel, IssueBook, ReturnBook, Student
+from .serializers import BookModelSerializer, IssueBookSerializer, ReturnBookSerializer, StudentSerializer
+from oauth2_provider.contrib.rest_framework import TokenHasScope, OAuth2Authentication
 
 
-class IssueRequestViewSet(viewsets.ModelViewSet):
-    queryset = IssueRequest.objects.all()
-    serializer_class = BookIssueRequestSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, permissions.IsAdminUser]
-    search_fields = ['requester', 'book', 'request_status', 'request_date']
-    filter_backends = (filters.SearchFilter,)
 
-    def perform_create(self, serializer):
+class BookView(viewsets.ModelViewSet):
+    authentication_classes = [OAuth2Authentication]
+    permission_classes = [TokenHasScope]
+    required_scopes = ["admin"]
+    queryset = BookModel.objects.all()
+    serializer_class = BookModelSerializer
+
+
+class StudentView(viewsets.ModelViewSet):
+    authentication_classes = [OAuth2Authentication]
+    permission_classes = [TokenHasScope]
+    required_scopes = ["student"]
+    queryset = Student.objects.all()
+    serializer_class = StudentSerializer
+
+
+class IssueBookView(viewsets.ModelViewSet):
+    authentication_classes = [OAuth2Authentication]
+    permission_classes = [TokenHasScope]
+    required_scopes = ["student"]
+    queryset = IssueBook.objects.all()
+    serializer_class = IssueBookSerializer
+
+    def create(self, request):
+        book = BookModel.objects.filter(id=request.data['bookid2'])
+        for i in book:
+            if i.quantity != 0:
+                i.quantity = i.quantity - 1
+                BookModel.objects.filter(id=request.data['bookid2']).update(quantity=i.quantity)
+                super().create(request)
+                return Response("Request Accepeted! ")
+            else:
+                return Response("book is not available...")
+
+
+class ReturnBookView(viewsets.ModelViewSet):
+    authentication_classes = [OAuth2Authentication]
+    permission_classes = [TokenHasScope]
+    required_scopes = ["student"]
+    queryset = ReturnBook.objects.all()
+    serializer_class = ReturnBookSerializer
+
+    def create(self, request):
+        super().create(request)
+        issue_book = IssueBook.objects.get(id=request.data['issuebook_id'])
+        BookModel.objects.filter(id=issue_book.bookid2.id).update(quantity=F('quantity') + 1)
+
+        return Response("success! your Book is returned. ")
+
+class AdminLoginView(APIView):
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+
         try:
-            book = Book.objects.get(pk=self.request.data['book'])
-        except ObjectDoesNotExist:
-            raise APIException("Requested Book Does Not Exist.")
+            r = requests.post(
+                settings.URL_TYPE + "/o/token/",
+                data={
+                    "grant_type": "password",
+                    "username": user.username,
+                    "password": request.data["password"],
+                    "client_id": settings.CLIENT_ID,
+                    "client_secret": settings.CLIENT_SECRET,
+                    # "scope": "admin",
+                },
+                verify=False,
+            )
 
+            if r.status_code == 200:
+                response = r.json()
+                details = {}
+                details.update(
+                    {
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "email": user.email,
+                    }
+                )
+
+                response.update({"details": details})
+                return Response(response)
+            else:
+                if r.status_code == 500:
+                    print(r)
+                return Response(r.json(), r.status_code)
+        except Exception as e:
+            print(e)
+            pass
+            return Response("error")
+
+
+class TokenView(APIView):
+    def post(self, request):
         try:
-            issue_request = IssueRequest.objects.get(
-                book=self.request.data['book'], requester=self.request.data['requester'],
-                request_status=IssueRequest.RequestStatus.Requested)
-        except ObjectDoesNotExist:
-            issue_request = None
+            r = requests.post(
+                settings.URL_TYPE + "/o/token/",
+                data={
+                    "grant_type": "refresh_token",
 
-        if issue_request:
-            raise APIException("Book has already been requested.")
+                    "refresh_token": request.data["refresh_token"],
+                    "client_id": settings.CLIENT_ID,
+                    "client_secret": settings.CLIENT_SECRET,
+                    # "scope": "admin",
+                },
+                verify=False,
+            )
 
-        if book.available > 0 and book.quantity > 0 and\
-                check_book_not_issued_to_user(self.request.data['requester'], self.request.data['book']):
-            serializer.save()
-        else:
-            raise APIException("Alert. \n " "Possible Reasons : " "1.Not available. " "2.Already issued.")
+            if r.status_code == 200:
+                response = r.json()
+                # print(response)
+                # setRefreshTokenExpiry(response["refresh_token"])
+                details = {}
+                details.update(
+                    {
+                        "refresh_token": request.data["refresh_token"]
 
+                    }
+                )
 
-class BookIssueLogViewSet(viewsets.ModelViewSet):
-    queryset = IssueLog.objects.all()
-    serializer_class = BookIssueLogSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, permissions.IsAdminUser]
-    search_fields = ['book__title', 'borrower__email', 'issued_date', 'deposit_date']
-    filter_backends = (filters.SearchFilter,)
-    http_method_names = ['get', 'post', 'head', 'put', 'patch']
-
-    def perform_create(self, serializer):
-        try:
-            book = Book.objects.get(pk=self.request.data['book'])
-        except ObjectDoesNotExist:
-            raise APIException("Book Does Not Exist.")
-        try:
-            issue_request = IssueRequest.objects.get(
-                book=self.request.data['book'], requester=self.request.data['borrower'])
-        except ObjectDoesNotExist:
-            issue_request = None
-        if book.available > 0 and book.quantity > 0 and\
-                check_book_not_issued_to_user(self.request.data['borrower'], self.request.data['book']):
-            book.available -= 1
-            serializer.save()
-            book.save()
-            if issue_request and issue_request.request_status == 'RQ':
-                issue_request.request_status = IssueRequest.RequestStatus.Issued
-                issue_request.save()
-        else:
-            raise APIException("Alert. \n " "Possible Reasons : " "1.Not available. " "2.Already issued.")
+                response.update({"details": details})
+                return Response(response)
+            else:
+                if r.status_code == 500:
+                    print(r)
+                return Response(r.json(), r.status_code)
+        except Exception as e:
+            print(e)
+            pass
+            return Response("error")
 
 
